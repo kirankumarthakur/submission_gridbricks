@@ -1,0 +1,16 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_server
+    ports:
+      - "8123:8123"
+    environment:
+      - CLICKHOUSE_DB=wind_data
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password123
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - ch_data:/var/lib/clickhouse
+
+volumes:
+  ch_data:
