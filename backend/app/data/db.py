@@ -18,7 +18,7 @@ def get_clickhouse_client():
                     username=settings.CLICKHOUSE_USER,
                     password=settings.CLICKHOUSE_PASSWORD,
                     database=settings.CLICKHOUSE_DB,
-                    secure=(settings.CLICKHOUSE_PORT == 8443),
+                    secure=(settings.CLICKHOUSE_PORT in (443, 8443)),
                 )
                 break
             except Exception:

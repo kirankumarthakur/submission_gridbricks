@@ -10,17 +10,6 @@ async def compute_and_store_aggregates(start_date: str, end_date: str):
     d_start_dt = f"{start_date} 00:00:00"
     d_end_dt = f"{end_date} 23:59:59"
 
-    check_query = """
-    SELECT count()
-    FROM calculated_aggregates
-    WHERE start_time >= {d_from:DateTime}
-      AND start_time <= {d_to:DateTime}
-    """
-    cnt = client.query(check_query, parameters={"d_from": d_start_dt, "d_to": d_end_dt}).result_rows[0][0]
-    num_days = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days + 1
-    if cnt >= num_days * 200:
-        return
-
     hist_start = (date.fromisoformat(start_date) - timedelta(days=7)).isoformat()
     d_from_dt = f"{hist_start} 00:00:00"
     d_to_dt = f"{end_date} 23:59:59"
@@ -68,23 +57,25 @@ async def compute_and_store_aggregates(start_date: str, end_date: str):
     if not unique_times:
         return
 
-    past_errors = []
-    for st, act_val in actual_map.items():
-        if st < target_start and st in grouped.groups:
-            group = grouped.get_group(st)
-            group_48c = group[(group["lead_hours"] >= 0) & (group["lead_hours"] <= 24)]
-            val = group_48c["generation_mw"].mean() if len(group_48c) > 0 else group["generation_mw"].mean()
-            if not np.isnan(val) and act_val > 0:
-                past_errors.append(val - act_val)
+    benchmark_means = {}
+    for st, group in grouped:
+        group_48c = group[(group["lead_hours"] >= 0) & (group["lead_hours"] <= 24)]
+        val = group_48c["generation_mw"].mean() if len(group_48c) > 0 else group["generation_mw"].mean()
+        if not np.isnan(val):
+            benchmark_means[st] = float(val)
 
-    rolling_bias = float(np.mean(past_errors)) if len(past_errors) >= 10 else 0.0
+    overall_errors = []
+    for st, act_val in actual_map.items():
+        if st in benchmark_means and act_val > 0:
+            overall_errors.append(benchmark_means[st] - act_val)
+    global_bias = float(np.mean(overall_errors)) if len(overall_errors) >= 4 else 0.0
 
     rows_to_insert = []
-    raw_means = []
 
     for st in unique_times:
         group = grouped.get_group(st)
         vals_all = group["generation_mw"].values
+        lead_all = group["lead_hours"].values
 
         group_48c = group[(group["lead_hours"] >= 0) & (group["lead_hours"] <= 24)]
         vals_48c = group_48c["generation_mw"].values if len(group_48c) > 0 else vals_all
@@ -99,29 +90,33 @@ async def compute_and_store_aggregates(start_date: str, end_date: str):
         mean_3d = float(np.mean(vals_3d))
         mean_7d = float(np.mean(vals_7d))
 
-        p10 = float(np.percentile(vals_all, 10))
-        p90 = float(np.percentile(vals_all, 90))
-        calibrated = max(0.0, mean_48c - rolling_bias)
+        weights = np.exp(-0.05 * np.maximum(0.5, lead_all))
+        best_fit = float(np.sum(vals_all * weights) / np.sum(weights)) if len(vals_all) > 0 else mean_48c
 
-        raw_means.append(mean_48c)
+        delivered_errors = []
+        for past_st, act_val in actual_map.items():
+            if past_st < st and past_st in benchmark_means and act_val > 0:
+                delivered_errors.append(benchmark_means[past_st] - act_val)
+
+        if len(delivered_errors) >= 6:
+            recent_bias = float(np.mean(delivered_errors[-48:]))
+        else:
+            recent_bias = global_bias
+
+        calibrated = max(0.0, mean_48c - recent_bias)
+
+        sigma = max(float(np.std(vals_all)), 0.12 * mean_48c)
+        p10 = max(0.0, float(mean_48c - 1.28 * sigma))
+        p90 = float(mean_48c + 1.28 * sigma)
 
         st_dt = st.to_pydatetime()
         rows_to_insert.append([st_dt, "AGG_MEAN_48C", mean_48c])
         rows_to_insert.append([st_dt, "AGG_MEAN_3D", mean_3d])
         rows_to_insert.append([st_dt, "AGG_MEAN_7D", mean_7d])
+        rows_to_insert.append([st_dt, "AGG_BEST_FIT", best_fit])
+        rows_to_insert.append([st_dt, "AGG_CALIBRATED", calibrated])
         rows_to_insert.append([st_dt, "AGG_P10", p10])
         rows_to_insert.append([st_dt, "AGG_P90", p90])
-        rows_to_insert.append([st_dt, "AGG_CALIBRATED", calibrated])
-
-    if len(raw_means) >= 4:
-        x_indices = np.arange(len(raw_means))
-        deg = min(4, len(raw_means) - 1)
-        poly_coeff = np.polyfit(x_indices, raw_means, deg=deg)
-        best_fit_vals = np.polyval(poly_coeff, x_indices)
-        for i, st in enumerate(unique_times):
-            st_dt = st.to_pydatetime()
-            val = float(max(0.0, best_fit_vals[i]))
-            rows_to_insert.append([st_dt, "AGG_BEST_FIT", val])
 
     if rows_to_insert:
         client.insert(
