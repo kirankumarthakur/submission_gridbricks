@@ -27,5 +27,6 @@ app.add_middleware(
 app.include_router(data.router, prefix="/api/v1")
 
 @app.get("/health")
+@app.get("/api/health")
 async def read_root():
     return {"status": "ok", "message": "Service is running"}
