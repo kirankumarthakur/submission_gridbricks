@@ -1,3 +1,4 @@
+import time
 import clickhouse_connect
 from app.config import get_settings
 
@@ -8,13 +9,22 @@ _client = None
 def get_clickhouse_client():
     global _client
     if _client is None:
-        _client = clickhouse_connect.get_client(
-            host=settings.CLICKHOUSE_HOST,
-            port=settings.CLICKHOUSE_PORT,
-            username=settings.CLICKHOUSE_USER,
-            password=settings.CLICKHOUSE_PASSWORD,
-            database=settings.CLICKHOUSE_DB,
-        )
+        retries = 30
+        while retries > 0:
+            try:
+                _client = clickhouse_connect.get_client(
+                    host=settings.CLICKHOUSE_HOST,
+                    port=settings.CLICKHOUSE_PORT,
+                    username=settings.CLICKHOUSE_USER,
+                    password=settings.CLICKHOUSE_PASSWORD,
+                    database=settings.CLICKHOUSE_DB,
+                )
+                break
+            except Exception:
+                retries -= 1
+                if retries == 0:
+                    raise
+                time.sleep(1)
     return _client
 
 

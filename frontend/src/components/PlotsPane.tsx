@@ -178,7 +178,8 @@ const createTooltipPlugin = () => {
           if (val === null || val === undefined) continue;
           totalItems++;
 
-          const isActual = s.label === "Actual";
+          const labelStr = typeof s.label === "string" ? s.label : "";
+          const isActual = labelStr === "Actual";
           if (isActual) {
             actualVal = val;
           }
@@ -187,7 +188,7 @@ const createTooltipPlugin = () => {
           displayedCount++;
 
           let deltaHtml = "";
-          if (!isActual && actualVal !== null && actualVal !== 0 && !s.label.includes("Procurement")) {
+          if (!isActual && actualVal !== null && actualVal !== 0 && !labelStr.includes("Procurement")) {
             const pct = ((val - actualVal) / actualVal) * 100;
             const sign = pct > 0 ? "+" : "";
             const colorClass =
@@ -208,7 +209,7 @@ const createTooltipPlugin = () => {
             <div class="flex items-center justify-between gap-3 text-[11px] py-0.5">
               <div class="flex items-center gap-1.5 overflow-hidden">
                 <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${strokeColor}"></span>
-                <span class="text-[#cfcfcf] truncate max-w-32">${s.label}</span>
+                <span class="text-[#cfcfcf] truncate max-w-32">${labelStr}</span>
               </div>
               <div class="font-medium tabular-nums text-right text-[#eff1f6]">
                 ${val.toLocaleString(undefined, { maximumFractionDigits: 1 })} MW
@@ -292,7 +293,7 @@ const buildUPlotOptions = (
       x: {
         time: true,
         auto: false,
-        range: (u, min, max) => {
+        range: (_u, min, max) => {
           if (timeBounds) {
             return timeBounds;
           }
@@ -301,7 +302,7 @@ const buildUPlotOptions = (
       },
       y: {
         auto: true,
-        range: (u, dataMin, dataMax) => {
+        range: (_u, _dataMin, dataMax) => {
           const min = 0;
           const max = dataMax && dataMax > 0 ? Math.ceil(dataMax * 1.05) : 20000;
           return [min, max];
@@ -315,7 +316,7 @@ const buildUPlotOptions = (
         ticks: { stroke: "#3d3d3d", width: 1 },
         font: "10px sans-serif",
         gap: 8,
-        values: (self, splits) => {
+        values: (_self, splits) => {
           return splits.map((ts) => {
             const d = new Date(ts * 1000);
             const h = d.getUTCHours();
@@ -340,7 +341,7 @@ const buildUPlotOptions = (
         ticks: { stroke: "#3d3d3d", width: 1 },
         font: "10px sans-serif",
         gap: 8,
-        values: (u, vals) => vals.map((v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`)),
+        values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`)),
       },
     ],
     series,

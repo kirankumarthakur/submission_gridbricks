@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/dist-ssr
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+**/.git
+**/.env
+**/ch_data
+**/clickhouse_data

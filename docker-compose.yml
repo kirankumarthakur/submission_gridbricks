@@ -1,0 +1,45 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_server
+    ports:
+      - "8123:8123"
+    environment:
+      - CLICKHOUSE_DB=wind_data
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password123
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - ch_data:/var/lib/clickhouse
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: energy_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password123
+      - CLICKHOUSE_DB=wind_data
+      - ELEXON_BASE_URL=https://data.elexon.co.uk/bmrs/api/v1/datasets
+      - URI_FRONTEND=http://localhost:5173,http://localhost:3000,http://localhost:80
+    depends_on:
+      - clickhouse
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: energy_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  ch_data:
